@@ -1,5 +1,6 @@
 package;
 
+import sys.FileSystem;
 import format.png.Writer;
 import haxe.io.Path;
 import sys.io.File;
@@ -27,7 +28,8 @@ class Main {
           }
 
           var data = Tools.build32BGRA(model.xsize, model.ysize, bytes.getBytes());
-          var out = File.write(Path.withoutExtension(fname) + '_$z.png');
+          FileSystem.createDirectory(Path.withoutExtension(fname));
+          var out = File.write(Path.withoutExtension(fname) + '/$z.png');
           (new Writer(out)).write(data);
         }
       }
