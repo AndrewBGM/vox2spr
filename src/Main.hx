@@ -7,8 +7,6 @@ import format.png.Tools;
 import haxe.io.BytesOutput;
 import vox.VoxReader;
 
-using StringTools;
-
 class Main {
   public static function main() {
     var fnames = Sys.args();
