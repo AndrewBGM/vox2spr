@@ -11,8 +11,7 @@ class VoxModel {
     this.xsize = xsize;
     this.ysize = ysize;
     this.zsize = zsize;
-
-    data = [for(z in 0...zsize) [for(y in 0...ysize) [for(x in 0...xsize) 0]]];
+    this.data = [for(z in 0...zsize) [for(y in 0...ysize) [for(x in 0...xsize) 0]]];
   }
 
   public function set(x: Int, y: Int, z: Int, v: Int) {
