@@ -1,17 +1,16 @@
 package vox;
 
+import sys.io.FileSeek;
+import sys.io.FileInput;
 import sys.io.File;
-import haxe.io.Bytes;
-import vox.VoxModel;
 
 using StringTools;
 
 class VoxReader {
-  public var models(default, null): Array<VoxModel>;
+  public var models: Array<VoxModel>;
 
-  var bytes: Bytes;
-  var offset: Int;
-  var currentModel: Null<VoxModel>;
+  var currentModel: VoxModel;
+  var input: FileInput;
   var palette: Array<Int> = [
     0x00000000, 0xffffffff, 0xffccffff, 0xff99ffff, 0xff66ffff, 0xff33ffff, 0xff00ffff, 0xffffccff, 0xffccccff, 0xff99ccff, 0xff66ccff, 0xff33ccff, 0xff00ccff, 0xffff99ff, 0xffcc99ff, 0xff9999ff,
     0xff6699ff, 0xff3399ff, 0xff0099ff, 0xffff66ff, 0xffcc66ff, 0xff9966ff, 0xff6666ff, 0xff3366ff, 0xff0066ff, 0xffff33ff, 0xffcc33ff, 0xff9933ff, 0xff6633ff, 0xff3333ff, 0xff0033ff, 0xffff00ff,
@@ -34,129 +33,104 @@ class VoxReader {
   public function new(fname: String) {
     models = [];
 
-    bytes = File.getBytes(fname);
-    offset = 0;
-    currentModel = null;
-
-    parseModels();
+    input = File.read(fname);
+    parse();
+    normalize();
   }
 
-  function parseModels() {
-    var header = nextString();
-    if (!header.startsWith('VOX ')) {
-      trace('Invalid VOX format');
+  function parse() {
+    if (!checkHeader()) {
+      trace('Invalid VOX file');
       return;
     }
 
-    var version = nextInt();
-    if (version != 150) {
-      trace('Unsupported VOX version: $version');
+    if (!checkVersion()) {
+      trace('Unsupported VOX version');
       return;
     }
 
     readChunk();
   }
 
+  function normalize() {
+    for(model in models) {
+      for(z in 0...model.zsize) {
+        for(y in 0...model.ysize) {
+          for(x in 0...model.xsize) {
+            model.set(x, y, z, palette[model.get(x, y, z)]);
+          }
+        }
+      }
+    }
+  }
+
+  function checkHeader() {
+    var header = input.readString(4);
+    return header.startsWith('VOX ');
+  }
+
+  function checkVersion() {
+    var version = input.readInt32();
+    return version == 150;
+  }
+
   function readChunk() {
-    var id = nextString();
-    var numBytesContent = nextInt();
-    var numBytesChildren = nextInt();
+    var id = input.readString(4);
+    var numContentBytes = input.readInt32();
+    input.readInt32();
 
     switch(id) {
       case 'MAIN':
-        while(true) {
-          var nextId = peekString();
+        while(!input.eof()) {
+          var nextId = input.readString(4);
+          input.seek(-4, FileSeek.SeekCur);
+
           switch(nextId) {
-            case 'PACK' | 'SIZE' | 'XYZI' | 'RGBA' | 'MATT':
-              readChunk();
+            case 'PACK' | 'SIZE' | 'XYZI' | 'RGBA' | 'MATT': readChunk();
             default: break;
           }
         }
 
       case 'PACK':
-        var numModels = nextInt();
+        var numModels = input.readInt32();
         for(i in 0...numModels) {
           readChunk();
           readChunk();
         }
 
       case 'SIZE':
-        var xsize = nextInt();
-        var ysize = nextInt();
-        var zsize = nextInt();
+        var x = input.readInt32();
+        var y = input.readInt32();
+        var z = input.readInt32();
 
-        currentModel = new VoxModel(xsize, ysize, zsize);
+        currentModel = new VoxModel(x, y, z);
         models.push(currentModel);
 
       case 'XYZI':
-        var numVoxels = nextInt();
+        var numVoxels = input.readInt32();
         for(i in 0...numVoxels) {
-          var x = nextByte();
-          var y = nextByte();
-          var z = nextByte();
-          var c = nextByte();
+          var x = input.readByte();
+          var y = input.readByte();
+          var z = input.readByte();
+          var c = input.readByte();
 
-          currentModel.addVoxel(x, y, z, c);
+          currentModel.set(x, y, z, c);
         }
-
-        currentModel = null;
 
       case 'RGBA':
         for(i in 0...255) {
-          var r = nextByte();
-          var g = nextByte();
-          var b = nextByte();
-          var a = nextByte();
-
-          palette[i + 1] = (r << 24) | (g << 16) | (b << 8) | a;
+          palette[i + 1] = input.readInt32();
         }
 
       case 'MATT':
-        var materialId = nextInt();
-        var materialType = nextInt();
-        var materialWeight = nextFloat();
-        var propertyBits = nextInt();
+        input.readInt32();
+        input.readInt32();
+        input.readFloat();
+        input.readInt32();
 
-        for(i in 0...numBytesContent) {
-          var propertyValue = nextFloat();
+        for(i in 0...numContentBytes) {
+          input.readFloat();
         }
     }
-  }
-
-  function nextByte() {
-    var val = bytes.get(offset);
-    offset += 1;
-
-    return val;
-  }
-
-  function nextInt() {
-    var val = bytes.getInt32(offset);
-    offset += 4;
-
-    return val;
-  }
-
-  function nextFloat() {
-    var val = bytes.getFloat(offset);
-    offset += 4;
-
-    return val;
-  }
-
-  function nextString() {
-    var val = '';
-    for(i in 0...4) {
-      val += String.fromCharCode(nextByte());
-    }
-
-    return val;
-  }
-
-  function peekString() {
-    var val = nextString();
-    offset -= 4;
-
-    return val;
   }
 }
